@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	ErrSameJobStatus = errors.New("same job status")
-	ErrJobNotFound   = errors.New("job not found")
+	ErrJobAlreadyProcessed = errors.New("job already processed")
+	ErrJobNotFound         = errors.New("job not found")
 )
 
 type JobStatus string
@@ -31,7 +31,7 @@ type Queue struct {
 type Job struct {
 	ID       string
 	Data     []byte
-	status   JobStatus
+	Status   JobStatus
 	Attempts int
 }
 
@@ -49,10 +49,9 @@ func (q *Queue) Enqueue(ctx context.Context, data []byte) {
 	id := uuid.NewV7().String()
 
 	j := &Job{
-		ID:     id,
-		Data:   data,
-		status: JobReady,
-
+		ID:       id,
+		Data:     data,
+		Status:   JobReady,
 		Attempts: 0,
 	}
 
@@ -68,12 +67,12 @@ func (q *Queue) Reserve(ctx context.Context) (Job, bool) {
 	for e := q.jobs.Front(); e != nil; e = e.Next() {
 		j := e.Value.(*Job)
 
-		if j.status != JobReady {
+		if j.Status != JobReady {
 			continue
 		}
 
 		j.Attempts++
-		j.status = JobProcessing
+		j.Status = JobProcessing
 
 		return *j, true
 	}
@@ -92,11 +91,11 @@ func (q *Queue) Complete(ctx context.Context, id string) error {
 
 	job := el.Value.(*Job)
 
-	if job.status != JobProcessing {
-		return ErrSameJobStatus
+	if job.Status != JobProcessing {
+		return ErrJobAlreadyProcessed
 	}
 
-	job.status = JobCompleted
+	job.Status = JobCompleted
 
 	return nil
 }
@@ -112,12 +111,12 @@ func (q *Queue) Fail(ctx context.Context, id string) error {
 
 	jobCopy := *el.Value.(*Job)
 
-	if jobCopy.status != JobProcessing {
-		return ErrSameJobStatus
+	if jobCopy.Status != JobProcessing {
+		return ErrJobAlreadyProcessed
 	}
 
 	// TODO: to be used on DLQ
-	jobCopy.status = JobFailed
+	jobCopy.Status = JobFailed
 
 	q.jobs.Remove(el)
 	delete(q.indexes, jobCopy.ID)

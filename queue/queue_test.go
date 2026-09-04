@@ -42,6 +42,7 @@ func TestQueueReserve(t *testing.T) {
 		assert.NotZero(t, job.ID)
 		assert.NotZero(t, job.Data)
 		assert.Equal(t, 1, job.Attempts)
+		assert.Equal(t, queue.JobProcessing, job.Status)
 
 		var u dummyData
 		err = json.Unmarshal(job.Data, &u)
@@ -74,6 +75,7 @@ func TestQueueComplete(t *testing.T) {
 
 		job, ok := q.Reserve(ctx)
 		assert.True(t, ok)
+		assert.Equal(t, queue.JobProcessing, job.Status)
 
 		err = q.Complete(ctx, job.ID)
 		require.NoError(t, err)
@@ -100,13 +102,14 @@ func TestQueueComplete(t *testing.T) {
 
 		job, ok := q.Reserve(ctx)
 		assert.True(t, ok)
+		assert.Equal(t, queue.JobProcessing, job.Status)
 
 		err = q.Complete(ctx, job.ID)
-		assert.Nil(t, err)
+		require.NoError(t, err)
 
 		err = q.Complete(ctx, job.ID)
 		require.Error(t, err)
-		assert.ErrorIs(t, err, queue.ErrSameJobStatus)
+		assert.ErrorIs(t, err, queue.ErrJobAlreadyProcessed)
 	})
 
 	t.Run("it should not complete a job with nonexistent id", func(t *testing.T) {
@@ -156,6 +159,7 @@ func TestQueueFail(t *testing.T) {
 
 		job, ok := q.Reserve(ctx)
 		assert.True(t, ok)
+		assert.Equal(t, queue.JobProcessing, job.Status)
 
 		err = q.Fail(ctx, job.ID)
 		require.NoError(t, err)
@@ -182,9 +186,13 @@ func TestQueueFail(t *testing.T) {
 
 		job, ok := q.Reserve(ctx)
 		assert.True(t, ok)
+		assert.Equal(t, queue.JobProcessing, job.Status)
 
 		err = q.Fail(ctx, job.ID)
 		require.NoError(t, err)
+
+		_, ok = q.Reserve(ctx)
+		assert.False(t, ok)
 
 		err = q.Fail(ctx, job.ID)
 		require.Error(t, err)

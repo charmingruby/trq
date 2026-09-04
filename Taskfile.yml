@@ -3,6 +3,8 @@
 version: "3"
 
 tasks:
+  example:
+    cmd: go run examples/{{.CLI_ARGS}}/main.go
   test:
     desc: Run all tests
     silent: true
