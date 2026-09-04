@@ -3,8 +3,14 @@ package queue
 import (
 	"container/list"
 	"context"
+	"errors"
 	"sync"
 	"uuid"
+)
+
+var (
+	ErrSameJobStatus = errors.New("same job status")
+	ErrJobNotFound   = errors.New("job not found")
 )
 
 type JobStatus string
@@ -77,39 +83,39 @@ func (q *Queue) Reserve(ctx context.Context) (Job, bool) {
 	return Job{}, false
 }
 
-func (q *Queue) Complete(ctx context.Context, id string) bool {
+func (q *Queue) Complete(ctx context.Context, id string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	el, ok := q.indexes[id]
 	if !ok {
-		return false
+		return ErrJobNotFound
 	}
 
 	job := el.Value.(*Job)
 
 	if job.status != JobProcessing {
-		return false
+		return ErrSameJobStatus
 	}
 
 	job.status = JobCompleted
 
-	return true
+	return nil
 }
 
-func (q *Queue) Fail(ctx context.Context, id string) bool {
+func (q *Queue) Fail(ctx context.Context, id string) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
 	el, ok := q.indexes[id]
 	if !ok {
-		return false
+		return ErrJobNotFound
 	}
 
 	jobCopy := *el.Value.(*Job)
 
 	if jobCopy.status != JobProcessing {
-		return false
+		return ErrSameJobStatus
 	}
 
 	// TODO: to be used on DLQ
@@ -118,5 +124,5 @@ func (q *Queue) Fail(ctx context.Context, id string) bool {
 	q.jobs.Remove(el)
 	delete(q.indexes, jobCopy.ID)
 
-	return true
+	return nil
 }

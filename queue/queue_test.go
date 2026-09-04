@@ -1,7 +1,8 @@
 package queue_test
 
 import (
-	"encoding/json/v2"
+	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/charmingruby/trq/queue"
@@ -42,7 +43,7 @@ func TestQueueReserve(t *testing.T) {
 		assert.True(t, ok)
 
 		assert.NotZero(t, job.ID)
-		assert.NotZero(t, kind, job.Kind)
+		assert.Equal(t, kind, job.Kind)
 		assert.NotZero(t, job.Data)
 		assert.Equal(t, 1, job.Attempts)
 
@@ -81,8 +82,8 @@ func TestQueueComplete(t *testing.T) {
 		job, ok := q.Reserve(ctx)
 		assert.True(t, ok)
 
-		ok = q.Complete(ctx, job.ID)
-		assert.True(t, ok)
+		err = q.Complete(ctx, job.ID)
+		require.NoError(t, err)
 	})
 
 	t.Run("it should not complete a job with status different from processing", func(t *testing.T) {
@@ -110,11 +111,12 @@ func TestQueueComplete(t *testing.T) {
 		job, ok := q.Reserve(ctx)
 		assert.True(t, ok)
 
-		ok = q.Complete(ctx, job.ID)
-		assert.True(t, ok)
+		err = q.Complete(ctx, job.ID)
+		assert.Nil(t, err)
 
-		ok = q.Complete(ctx, job.ID)
-		assert.False(t, ok)
+		err = q.Complete(ctx, job.ID)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, queue.ErrSameJobStatus)
 	})
 
 	t.Run("it should not complete a job with nonexistent id", func(t *testing.T) {
@@ -139,8 +141,9 @@ func TestQueueComplete(t *testing.T) {
 			data,
 		)
 
-		ok := q.Complete(ctx, "invalid_id")
-		assert.False(t, ok)
+		err = q.Complete(ctx, "invalid_id")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, queue.ErrJobNotFound)
 	})
 }
 
@@ -170,8 +173,8 @@ func TestQueueFail(t *testing.T) {
 		job, ok := q.Reserve(ctx)
 		assert.True(t, ok)
 
-		ok = q.Fail(ctx, job.ID)
-		assert.True(t, ok)
+		err = q.Fail(ctx, job.ID)
+		require.NoError(t, err)
 	})
 
 	t.Run("it should not fail a job with status different from processing", func(t *testing.T) {
@@ -199,11 +202,12 @@ func TestQueueFail(t *testing.T) {
 		job, ok := q.Reserve(ctx)
 		assert.True(t, ok)
 
-		ok = q.Fail(ctx, job.ID)
-		assert.True(t, ok)
+		err = q.Fail(ctx, job.ID)
+		require.NoError(t, err)
 
-		ok = q.Fail(ctx, job.ID)
-		assert.False(t, ok)
+		err = q.Fail(ctx, job.ID)
+		require.Error(t, err)
+		assert.True(t, errors.Is(err, queue.ErrJobNotFound))
 	})
 
 	t.Run("it should not fail a job with nonexistent id", func(t *testing.T) {
@@ -228,7 +232,8 @@ func TestQueueFail(t *testing.T) {
 			data,
 		)
 
-		ok := q.Fail(ctx, "invalid_id")
-		assert.False(t, ok)
+		err = q.Fail(ctx, "invalid_id")
+		require.Error(t, err)
+		assert.ErrorIs(t, err, queue.ErrJobNotFound)
 	})
 }
