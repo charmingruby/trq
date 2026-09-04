@@ -30,7 +30,6 @@ type Queue struct {
 
 type Job struct {
 	ID       string
-	Kind     string
 	Data     []byte
 	status   JobStatus
 	Attempts int
@@ -43,7 +42,7 @@ func New() *Queue {
 	}
 }
 
-func (q *Queue) Enqueue(ctx context.Context, kind string, data []byte) {
+func (q *Queue) Enqueue(ctx context.Context, data []byte) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -51,7 +50,6 @@ func (q *Queue) Enqueue(ctx context.Context, kind string, data []byte) {
 
 	j := &Job{
 		ID:     id,
-		Kind:   kind,
 		Data:   data,
 		status: JobReady,
 

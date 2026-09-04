@@ -24,8 +24,6 @@ func TestQueueReserve(t *testing.T) {
 			Content: "hey!",
 		}
 
-		kind := "dummy_message"
-
 		data, err := json.Marshal(dummy)
 
 		require.NoError(t, err)
@@ -34,7 +32,6 @@ func TestQueueReserve(t *testing.T) {
 
 		q.Enqueue(
 			ctx,
-			kind,
 			data,
 		)
 
@@ -43,7 +40,6 @@ func TestQueueReserve(t *testing.T) {
 		assert.True(t, ok)
 
 		assert.NotZero(t, job.ID)
-		assert.Equal(t, kind, job.Kind)
 		assert.NotZero(t, job.Data)
 		assert.Equal(t, 1, job.Attempts)
 
@@ -65,8 +61,6 @@ func TestQueueComplete(t *testing.T) {
 			Content: "hey!",
 		}
 
-		kind := "dummy_message"
-
 		data, err := json.Marshal(dummy)
 
 		require.NoError(t, err)
@@ -75,7 +69,6 @@ func TestQueueComplete(t *testing.T) {
 
 		q.Enqueue(
 			ctx,
-			kind,
 			data,
 		)
 
@@ -94,8 +87,6 @@ func TestQueueComplete(t *testing.T) {
 			Content: "hey!",
 		}
 
-		kind := "dummy_message"
-
 		data, err := json.Marshal(dummy)
 
 		require.NoError(t, err)
@@ -104,7 +95,6 @@ func TestQueueComplete(t *testing.T) {
 
 		q.Enqueue(
 			ctx,
-			kind,
 			data,
 		)
 
@@ -127,8 +117,6 @@ func TestQueueComplete(t *testing.T) {
 			Content: "hey!",
 		}
 
-		kind := "dummy_message"
-
 		data, err := json.Marshal(dummy)
 
 		require.NoError(t, err)
@@ -137,7 +125,6 @@ func TestQueueComplete(t *testing.T) {
 
 		q.Enqueue(
 			ctx,
-			kind,
 			data,
 		)
 
@@ -156,8 +143,6 @@ func TestQueueFail(t *testing.T) {
 			Content: "hey!",
 		}
 
-		kind := "dummy_message"
-
 		data, err := json.Marshal(dummy)
 
 		require.NoError(t, err)
@@ -166,7 +151,6 @@ func TestQueueFail(t *testing.T) {
 
 		q.Enqueue(
 			ctx,
-			kind,
 			data,
 		)
 
@@ -185,8 +169,6 @@ func TestQueueFail(t *testing.T) {
 			Content: "hey!",
 		}
 
-		kind := "dummy_message"
-
 		data, err := json.Marshal(dummy)
 
 		require.NoError(t, err)
@@ -195,7 +177,6 @@ func TestQueueFail(t *testing.T) {
 
 		q.Enqueue(
 			ctx,
-			kind,
 			data,
 		)
 
@@ -218,8 +199,6 @@ func TestQueueFail(t *testing.T) {
 			Content: "hey!",
 		}
 
-		kind := "dummy_message"
-
 		data, err := json.Marshal(dummy)
 
 		require.NoError(t, err)
@@ -228,7 +207,6 @@ func TestQueueFail(t *testing.T) {
 
 		q.Enqueue(
 			ctx,
-			kind,
 			data,
 		)
 
