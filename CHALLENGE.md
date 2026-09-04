@@ -1,6 +1,6 @@
-# Interview Details
+# Challenge
 
-## Coding — Work Queue with Retries and Dead-Letter Queue
+> Note: The details below were provided by someone who was interviewed. They represent the requirements and context given during the interview, rather than assumptions made afterward.
 
 The coding round asked me to implement a **work queue** and the main operations required to manage jobs through their lifecycle.
 

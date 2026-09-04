@@ -88,6 +88,10 @@ func (q *Queue) Complete(ctx context.Context, id string) bool {
 
 	job := el.Value.(*Job)
 
+	if job.status != JobProcessing {
+		return false
+	}
+
 	job.status = JobCompleted
 
 	return true
@@ -102,9 +106,17 @@ func (q *Queue) Fail(ctx context.Context, id string) bool {
 		return false
 	}
 
-	job := el.Value.(*Job)
+	jobCopy := *el.Value.(*Job)
 
-	job.status = JobFailed
+	if jobCopy.status != JobProcessing {
+		return false
+	}
+
+	// TODO: to be used on DLQ
+	jobCopy.status = JobFailed
+
+	q.jobs.Remove(el)
+	delete(q.indexes, jobCopy.ID)
 
 	return true
 }
