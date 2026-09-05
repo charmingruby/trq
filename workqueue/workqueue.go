@@ -45,21 +45,28 @@ func New(q *queue.Queue, concurrency int, timeoutDuration time.Duration) *Workqu
 	}
 }
 
-func (w *Workqueue) Process(handlerFn Handler) error {
-	ctx := context.TODO()
+func (w *Workqueue) Process(ctx context.Context, handlerFn Handler) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	for i := 0; i < w.concurrency; i++ {
 		w.wg.Go(func() {
 			for {
-				job, ok := w.queue.Reserve(ctx)
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+
+				job, ok := w.queue.WaitReserve(ctx)
 				if !ok {
-					continue
+					return
 				}
 
 				err := handlerFn(ctx, job)
 				if err != nil {
-					if err := w.queue.Fail(ctx, job.ID); err != nil {
-						w.sendResult(i, job, err)
+					if failErr := w.queue.Fail(ctx, job.ID); failErr != nil {
+						w.sendResult(i, job, failErr)
 						continue
 					}
 
@@ -77,6 +84,11 @@ func (w *Workqueue) Process(handlerFn Handler) error {
 		})
 	}
 
+	go func() {
+		w.wg.Wait()
+		close(w.resultCh)
+	}()
+
 	for r := range w.resultCh {
 		msg := "processed successfully"
 		if r.Err != nil {
@@ -90,8 +102,6 @@ func (w *Workqueue) Process(handlerFn Handler) error {
 			msg,
 		)
 	}
-
-	w.wg.Wait()
 
 	return nil
 }

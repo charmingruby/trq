@@ -26,6 +26,7 @@ type Queue struct {
 	jobs    *list.List
 	indexes map[string]*list.Element
 	mu      sync.Mutex
+	notify  chan struct{}
 }
 
 type Job struct {
@@ -39,6 +40,7 @@ func New() *Queue {
 	return &Queue{
 		jobs:    list.New(),
 		indexes: make(map[string]*list.Element),
+		notify:  make(chan struct{}, 1),
 	}
 }
 
@@ -58,6 +60,11 @@ func (q *Queue) Enqueue(ctx context.Context, data []byte) {
 	el := q.jobs.PushBack(j)
 
 	q.indexes[id] = el
+
+	select {
+	case q.notify <- struct{}{}:
+	default:
+	}
 }
 
 func (q *Queue) Reserve(ctx context.Context) (Job, bool) {
@@ -78,6 +85,20 @@ func (q *Queue) Reserve(ctx context.Context) (Job, bool) {
 	}
 
 	return Job{}, false
+}
+
+func (q *Queue) WaitReserve(ctx context.Context) (Job, bool) {
+	for {
+		if job, ok := q.Reserve(ctx); ok {
+			return job, true
+		}
+
+		select {
+		case <-q.notify:
+		case <-ctx.Done():
+			return Job{}, false
+		}
+	}
 }
 
 func (q *Queue) Complete(ctx context.Context, id string) error {

@@ -21,13 +21,13 @@ func main() {
 	wq := workqueue.New(q, 5, to)
 
 	go func() {
-		wq.Process(func(ctx context.Context, job queue.Job) error {
+		wq.Process(ctx, func(ctx context.Context, job queue.Job) error {
 			fmt.Printf("\t processed: %s\n", job.ID)
 			return nil
 		})
 	}()
 
-	enqueueData(ctx, q, 100)
+	enqueueData(ctx, q, 10000)
 
 	select {}
 }
