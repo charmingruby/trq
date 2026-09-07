@@ -41,6 +41,7 @@ func main() {
 	}()
 
 	enqueueData(ctx, q, 10000)
+	q.Close()
 
 	select {}
 }

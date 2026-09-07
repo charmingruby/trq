@@ -27,6 +27,7 @@ type Queue struct {
 	indexes map[string]*list.Element
 	mu      sync.Mutex
 	notify  chan struct{}
+	closed  bool
 }
 
 type Job struct {
@@ -42,6 +43,18 @@ func New() *Queue {
 		indexes: make(map[string]*list.Element),
 		notify:  make(chan struct{}, 1),
 	}
+}
+
+func (q *Queue) Close() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	if q.closed {
+		return
+	}
+
+	q.closed = true
+	close(q.notify)
 }
 
 func (q *Queue) Enqueue(ctx context.Context, data []byte) {
@@ -67,10 +80,7 @@ func (q *Queue) Enqueue(ctx context.Context, data []byte) {
 	}
 }
 
-func (q *Queue) Reserve(ctx context.Context) (*Job, bool) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
+func (q *Queue) reserve() (*Job, bool) {
 	for e := q.jobs.Front(); e != nil; e = e.Next() {
 		j := e.Value.(*Job)
 
@@ -87,11 +97,28 @@ func (q *Queue) Reserve(ctx context.Context) (*Job, bool) {
 	return nil, false
 }
 
+func (q *Queue) Reserve(ctx context.Context) (*Job, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	return q.reserve()
+}
+
 func (q *Queue) WaitReserve(ctx context.Context) (*Job, bool) {
 	for {
-		if job, ok := q.Reserve(ctx); ok {
+		q.mu.Lock()
+
+		if q.closed {
+			q.mu.Unlock()
+			return nil, false
+		}
+
+		if job, ok := q.reserve(); ok {
+			q.mu.Unlock()
 			return job, true
 		}
+
+		q.mu.Unlock()
 
 		select {
 		case <-q.notify:
