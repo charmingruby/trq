@@ -99,7 +99,18 @@ func (w *Workqueue) Process(ctx context.Context, handlerFn Handler) error {
 					return
 				}
 
+				done := make(chan struct{})
+
+				go func() {
+					select {
+					case <-done:
+					case <-time.After(w.timeoutDuration):
+						w.queue.Fail(ctx, job.ID)
+					}
+				}()
+
 				if err := handlerFn(ctx, job); err != nil {
+					close(done)
 					if err := w.queue.Fail(ctx, job.ID); err != nil {
 						w.sendResult(i, job, err)
 						continue
@@ -108,6 +119,8 @@ func (w *Workqueue) Process(ctx context.Context, handlerFn Handler) error {
 					w.sendResult(i, job, err)
 					continue
 				}
+
+				close(done)
 
 				if err := w.queue.Complete(ctx, job.ID); err != nil {
 					w.sendResult(i, job, err)

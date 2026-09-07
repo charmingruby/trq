@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -13,12 +14,19 @@ import (
 )
 
 type sampleData struct {
-	Name string `json:"name"`
+	Name    string `json:"name"`
+	FailAll bool   `json:"fail_all"`
 }
 
 func main() {
 	ctx := context.TODO()
-	q := queue.New()
+
+	dlq := queue.New()
+	q := queue.New(
+		queue.WithMaxRetries(3),
+		queue.WithBaseDelay(1*time.Second),
+		queue.WithDLQ(dlq),
+	)
 	to := 5 * time.Second
 
 	j, err := journal.New("./tmp/journal")
@@ -35,7 +43,17 @@ func main() {
 
 	go func() {
 		wq.Process(ctx, func(ctx context.Context, job *queue.Job) error {
-			fmt.Printf("\t processed: %s\n", job.ID)
+			fmt.Printf("\t processing: %s (attempt %d)\n", job.ID, job.Attempts)
+
+			var d sampleData
+			if err := json.Unmarshal(job.Data, &d); err != nil {
+				return err
+			}
+
+			if d.FailAll {
+				return errors.New("intentional failure")
+			}
+
 			return nil
 		})
 	}()

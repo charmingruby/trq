@@ -282,7 +282,8 @@ func TestQueueFail(t *testing.T) {
 		assert.Equal(t, queue.JobProcessing, job.Status)
 
 		err = q.Fail(ctx, job.ID)
-		require.NoError(t, err)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, queue.ErrMaxRetriesExceeded)
 	})
 
 	t.Run("it should not fail a job with status different from processing", func(t *testing.T) {
@@ -309,12 +310,13 @@ func TestQueueFail(t *testing.T) {
 		assert.Equal(t, queue.JobProcessing, job.Status)
 
 		err = q.Fail(ctx, job.ID)
-		require.NoError(t, err)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, queue.ErrMaxRetriesExceeded)
 
 		_, ok = q.Reserve(ctx)
 		assert.False(t, ok)
 
-		err = q.Fail(ctx, job.ID)
+		err = q.Fail(ctx, "invalid_id")
 		require.Error(t, err)
 		assert.True(t, errors.Is(err, queue.ErrJobNotFound))
 	})
@@ -341,5 +343,123 @@ func TestQueueFail(t *testing.T) {
 		err = q.Fail(ctx, "invalid_id")
 		require.Error(t, err)
 		assert.ErrorIs(t, err, queue.ErrJobNotFound)
+	})
+}
+
+func TestQueueRetry(t *testing.T) {
+	t.Run("it should re-enqueue job when attempts < maxRetries", func(t *testing.T) {
+		dlq := queue.New()
+		q := queue.New(
+			queue.WithMaxRetries(3),
+			queue.WithBaseDelay(time.Millisecond),
+			queue.WithDLQ(dlq),
+		)
+
+		ctx := t.Context()
+		data, _ := json.Marshal(dummyData{Owner: "retry", Content: "test"})
+
+		q.Enqueue(ctx, data)
+
+		job, ok := q.Reserve(ctx)
+		require.True(t, ok)
+		assert.Equal(t, 1, job.Attempts)
+
+		err := q.Fail(ctx, job.ID)
+		require.NoError(t, err)
+
+		time.Sleep(2 * time.Millisecond)
+
+		job2, ok := q.Reserve(ctx)
+		require.True(t, ok)
+		assert.Equal(t, 2, job2.Attempts)
+		assert.Equal(t, job.ID, job2.ID)
+
+		err = q.Fail(ctx, job2.ID)
+		require.NoError(t, err)
+
+		time.Sleep(4 * time.Millisecond)
+
+		job3, ok := q.Reserve(ctx)
+		require.True(t, ok)
+		assert.Equal(t, 3, job3.Attempts)
+
+		err = q.Fail(ctx, job3.ID)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, queue.ErrMaxRetriesExceeded)
+
+		assert.Equal(t, 0, q.Len())
+		assert.Equal(t, 1, dlq.Len())
+	})
+
+	t.Run("it should move job to DLQ when maxRetries exceeded", func(t *testing.T) {
+		dlq := queue.New()
+		q := queue.New(
+			queue.WithMaxRetries(2),
+			queue.WithBaseDelay(time.Millisecond),
+			queue.WithDLQ(dlq),
+		)
+
+		ctx := t.Context()
+		data, _ := json.Marshal(dummyData{Owner: "dlq", Content: "test"})
+
+		q.Enqueue(ctx, data)
+
+		job, _ := q.Reserve(ctx)
+		q.Fail(ctx, job.ID)
+
+		time.Sleep(2 * time.Millisecond)
+
+		job2, _ := q.Reserve(ctx)
+		q.Fail(ctx, job2.ID)
+
+		assert.Equal(t, 0, q.Len())
+		assert.Equal(t, 1, dlq.Len())
+	})
+
+	t.Run("it should apply exponential backoff delays", func(t *testing.T) {
+		q := queue.New(
+			queue.WithMaxRetries(4),
+			queue.WithBaseDelay(100*time.Millisecond),
+		)
+
+		ctx := t.Context()
+		data, _ := json.Marshal(dummyData{Owner: "backoff", Content: "test"})
+
+		q.Enqueue(ctx, data)
+
+		job, _ := q.Reserve(ctx)
+		q.Fail(ctx, job.ID)
+
+		readyAt1 := job.ReadyAt
+
+		time.Sleep(200 * time.Millisecond)
+
+		job2, _ := q.Reserve(ctx)
+		q.Fail(ctx, job2.ID)
+
+		readyAt2 := job2.ReadyAt
+
+		delay1 := readyAt1.Sub(time.Now())
+		delay2 := readyAt2.Sub(time.Now())
+
+		assert.Greater(t, delay2, delay1)
+	})
+
+	t.Run("it should not reserve jobs during backoff period", func(t *testing.T) {
+		q := queue.New(
+			queue.WithMaxRetries(3),
+			queue.WithBaseDelay(500*time.Millisecond),
+		)
+
+		ctx := t.Context()
+		data, _ := json.Marshal(dummyData{Owner: "backoff", Content: "test"})
+
+		q.Enqueue(ctx, data)
+
+		job, _ := q.Reserve(ctx)
+		q.Fail(ctx, job.ID)
+
+		_, ok := q.Reserve(ctx)
+		assert.False(t, ok)
 	})
 }
