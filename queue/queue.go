@@ -67,7 +67,7 @@ func (q *Queue) Enqueue(ctx context.Context, data []byte) {
 	}
 }
 
-func (q *Queue) Reserve(ctx context.Context) (Job, bool) {
+func (q *Queue) Reserve(ctx context.Context) (*Job, bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -81,13 +81,13 @@ func (q *Queue) Reserve(ctx context.Context) (Job, bool) {
 		j.Attempts++
 		j.Status = JobProcessing
 
-		return *j, true
+		return j, true
 	}
 
-	return Job{}, false
+	return nil, false
 }
 
-func (q *Queue) WaitReserve(ctx context.Context) (Job, bool) {
+func (q *Queue) WaitReserve(ctx context.Context) (*Job, bool) {
 	for {
 		if job, ok := q.Reserve(ctx); ok {
 			return job, true
@@ -96,7 +96,7 @@ func (q *Queue) WaitReserve(ctx context.Context) (Job, bool) {
 		select {
 		case <-q.notify:
 		case <-ctx.Done():
-			return Job{}, false
+			return nil, false
 		}
 	}
 }

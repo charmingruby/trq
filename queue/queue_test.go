@@ -101,7 +101,7 @@ func TestQueueWaitReserve(t *testing.T) {
 
 		ctx := t.Context()
 
-		var gotJob queue.Job
+		var gotJob *queue.Job
 		var gotOK bool
 
 		var wg sync.WaitGroup

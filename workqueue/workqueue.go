@@ -3,20 +3,24 @@ package workqueue
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
+	"github.com/charmingruby/trq/journal"
 	"github.com/charmingruby/trq/queue"
 )
 
-const defaultConcurrency = 4
+const (
+	defaultConcurrency  = 4
+	defaultTimeoutInSec = 15
+)
 
 var ErrUnableToReserveJob = errors.New("unable to reserve job")
 
 type ProcessingResult struct {
 	WorkerID int
 	JobID    string
+	Status   string
 	Err      error
 }
 
@@ -26,22 +30,54 @@ type Workqueue struct {
 	wg              sync.WaitGroup
 	resultCh        chan ProcessingResult
 	timeoutDuration time.Duration
+	journal         *journal.Journal
 }
 
-type Handler = func(ctx context.Context, job queue.Job) error
+type Handler = func(ctx context.Context, job *queue.Job) error
 
-func New(q *queue.Queue, concurrency int, timeoutDuration time.Duration) *Workqueue {
-	c := concurrency
-	if c <= 0 {
-		c = defaultConcurrency
+type Option = func(*Workqueue)
+
+func New(q *queue.Queue, opts ...Option) *Workqueue {
+	w := &Workqueue{}
+
+	for _, opt := range opts {
+		opt(w)
 	}
 
-	return &Workqueue{
-		queue:           q,
-		concurrency:     c,
-		wg:              sync.WaitGroup{},
-		resultCh:        make(chan ProcessingResult, 100),
-		timeoutDuration: timeoutDuration,
+	w.queue = q
+	w.wg = sync.WaitGroup{}
+	w.resultCh = make(chan ProcessingResult, 100)
+
+	return w
+}
+
+func WithTimeout(duration time.Duration) func(*Workqueue) {
+	return func(w *Workqueue) {
+		if duration.Nanoseconds() == 0 {
+			w.timeoutDuration = defaultTimeoutInSec * time.Second
+
+			return
+		}
+
+		w.timeoutDuration = duration
+	}
+}
+
+func WithJournal(j *journal.Journal) func(*Workqueue) {
+	return func(w *Workqueue) {
+		w.journal = j
+	}
+}
+
+func WithConcurrency(c int) func(*Workqueue) {
+	return func(w *Workqueue) {
+		if c <= 0 {
+			w.concurrency = defaultConcurrency
+
+			return
+		}
+
+		w.concurrency = c
 	}
 }
 
@@ -63,10 +99,9 @@ func (w *Workqueue) Process(ctx context.Context, handlerFn Handler) error {
 					return
 				}
 
-				err := handlerFn(ctx, job)
-				if err != nil {
-					if failErr := w.queue.Fail(ctx, job.ID); failErr != nil {
-						w.sendResult(i, job, failErr)
+				if err := handlerFn(ctx, job); err != nil {
+					if err := w.queue.Fail(ctx, job.ID); err != nil {
+						w.sendResult(i, job, err)
 						continue
 					}
 
@@ -89,27 +124,32 @@ func (w *Workqueue) Process(ctx context.Context, handlerFn Handler) error {
 		close(w.resultCh)
 	}()
 
-	for r := range w.resultCh {
-		msg := "processed successfully"
-		if r.Err != nil {
-			msg = fmt.Sprintf("processing error: %s", r.Err.Error())
-		}
+	if w.journal != nil {
+		for r := range w.resultCh {
+			e := journal.Entry{
+				WorkerID: r.WorkerID,
+				JobID:    r.JobID,
+				Status:   r.Status,
+			}
 
-		fmt.Printf("[%s] Worker %d (%s): %s\n",
-			time.Now().String(),
-			r.WorkerID,
-			r.JobID,
-			msg,
-		)
+			if r.Err != nil {
+				e.Message = r.Err.Error()
+				w.journal.Append(e)
+				continue
+			}
+
+			w.journal.Append(e)
+		}
 	}
 
 	return nil
 }
 
-func (w *Workqueue) sendResult(workerID int, job queue.Job, err error) {
+func (w *Workqueue) sendResult(workerID int, job *queue.Job, err error) {
 	w.resultCh <- ProcessingResult{
 		WorkerID: workerID,
 		JobID:    job.ID,
+		Status:   string(job.Status),
 		Err:      err,
 	}
 }
